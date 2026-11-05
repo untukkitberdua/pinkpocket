@@ -22,7 +22,6 @@ const formatDate = (value) => new Date(`${value}T00:00:00`).toLocaleDateString('
 const todayLocal = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; };
 
 let client = null;
-let currentUser = null;
 let transactions = [];
 let period = '2026-11';
 let calendarYear = 2026;
@@ -31,7 +30,6 @@ let activeFilter = 'all';
 let openedDay = '';
 let editingId = null;
 let selectedChartDay = '';
-let authMode = 'login';
 let realtimeChannel = null;
 let refreshTimer = null;
 
@@ -51,71 +49,13 @@ function setSyncStatus(message, offline=false) {
   $('#syncLabel').textContent = message;
   $('#syncStatus').classList.toggle('offline', offline);
 }
-function showAuth(message='') {
-  $('#authScreen').hidden = false;
-  $('#configScreen').hidden = true;
-  $('#appShell').hidden = true;
-  $('#authMessage').textContent = message;
-}
 function showConfig() {
-  $('#authScreen').hidden = true;
-  $('#appShell').hidden = true;
   $('#configScreen').hidden = false;
+  $('#appShell').hidden = true;
 }
 function showApp() {
-  $('#authScreen').hidden = true;
   $('#configScreen').hidden = true;
   $('#appShell').hidden = false;
-  $('#accountEmail').textContent = currentUser?.email || '';
-}
-function updateAuthLabels() {
-  const signup = authMode === 'signup';
-  $('#authSubtitle').textContent = signup ? 'Buat satu akun yang akan dipakai bersama.' : 'Masuk ke ruang keuangan kalian.';
-  $('#authSubmit').textContent = signup ? 'Buat akun bersama ♡' : 'Masuk ke PinkPocket ♡';
-  $('#authSwitch').innerHTML = signup
-    ? 'Sudah punya akun? <button type="button" id="toggleAuth">Masuk</button>'
-    : 'Belum punya akun? <button type="button" id="toggleAuth">Buat akun bersama</button>';
-  $('#authPassword').autocomplete = signup ? 'new-password' : 'current-password';
-  $('#authMessage').textContent = '';
-  $('#toggleAuth').addEventListener('click', () => { authMode = signup ? 'login' : 'signup'; updateAuthLabels(); });
-}
-async function handleAuth(event) {
-  event.preventDefault();
-  if (!client) return;
-  const email = $('#authEmail').value.trim();
-  const password = $('#authPassword').value;
-  const button = $('#authSubmit');
-  button.disabled = true;
-  button.textContent = authMode === 'signup' ? 'Membuat akun...' : 'Memeriksa akun...';
-  $('#authMessage').textContent = '';
-  try {
-    if (authMode === 'signup') {
-      const { data, error } = await client.auth.signUp({
-        email, password,
-        options: { emailRedirectTo: window.location.href.split('#')[0] }
-      });
-      if (error) throw error;
-      if (data.session) {
-        currentUser = data.user;
-        await enterApp();
-      } else {
-        authMode = 'login';
-        updateAuthLabels();
-        $('#authEmail').value = email;
-        $('#authMessage').textContent = 'Akun dibuat. Cek email untuk konfirmasi, lalu masuk dengan akun yang sama di kedua perangkat.';
-      }
-    } else {
-      const { data, error } = await client.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      currentUser = data.user;
-      await enterApp();
-    }
-  } catch (error) {
-    $('#authMessage').textContent = friendlyError(error.message || 'Autentikasi gagal.');
-  } finally {
-    button.disabled = false;
-    button.textContent = authMode === 'signup' ? 'Buat akun bersama ♡' : 'Masuk ke PinkPocket ♡';
-  }
 }
 function friendlyError(message) {
   const text = String(message || 'Terjadi kesalahan.');
@@ -129,7 +69,6 @@ function friendlyError(message) {
 function mapRow(row) {
   return {
     id: row.id,
-    userId: row.user_id,
     type: row.type,
     amount: Number(row.amount),
     description: row.description || '',
@@ -162,9 +101,9 @@ function walletBalances() {
   return result;
 }
 async function fetchTransactions(quiet=false) {
-  if (!client || !currentUser) return;
+  if (!client) return;
   if (!quiet) setSyncStatus('Menyinkronkan data...');
-  const { data, error } = await client.from('transactions').select('*').eq('user_id', currentUser.id).order('date',{ascending:false}).order('created_at',{ascending:false});
+  const { data, error } = await client.from('transactions').select('*').order('date',{ascending:false}).order('created_at',{ascending:false});
   if (error) {
     setSyncStatus('Gagal menyinkronkan data', true);
     if (!quiet) showToast(friendlyError(error.message));
@@ -177,7 +116,7 @@ async function fetchTransactions(quiet=false) {
 async function enterApp() {
   showApp();
   if (realtimeChannel) client.removeChannel(realtimeChannel);
-  realtimeChannel = client.channel(`pinkpocket-transactions-${currentUser.id}`)
+  realtimeChannel = client.channel('pinkpocket-shared-transactions')
     .on('postgres_changes', { event:'*', schema:'public', table:'transactions' }, () => {
       window.clearTimeout(refreshTimer);
       refreshTimer = window.setTimeout(() => fetchTransactions(true).catch(() => {}), 250);
@@ -187,7 +126,7 @@ async function enterApp() {
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setSyncStatus('Realtime terputus • coba muat ulang', true);
     });
   try { await fetchTransactions(); }
-  catch (error) { showToast('Data belum bisa dimuat. Cek setup SQL Supabase.'); }
+  catch (error) { showToast('Data belum bisa dimuat. Periksa SQL Supabase dan hak akses anonim.'); }
 }
 function renderPeriod() {
   $('#periodLabel').textContent = monthLabel(period);
@@ -364,9 +303,9 @@ async function saveEntry(event) {
   try {
     let result;
     if (editingId) {
-      result = await client.from('transactions').update(payload).eq('id',editingId).eq('user_id',currentUser.id).select().single();
+      result = await client.from('transactions').update(payload).eq('id',editingId).select().single();
     } else {
-      result = await client.from('transactions').insert({...payload,user_id:currentUser.id}).select().single();
+      result = await client.from('transactions').insert(payload).select().single();
     }
     if (result.error) throw result.error;
     const savedDate = payload.date;
@@ -383,7 +322,7 @@ async function deleteTransaction(id) {
   const row=transactions.find(t=>t.id===id);
   if (!row || !confirm(`Hapus transaksi “${row.description}”?`)) return;
   try {
-    const {error}=await client.from('transactions').delete().eq('id',id).eq('user_id',currentUser.id);
+    const {error}=await client.from('transactions').delete().eq('id',id);
     if (error) throw error;
     await fetchTransactions(true); showToast('Transaksi dihapus.');
   } catch(error) { showToast(friendlyError(error.message)); }
@@ -401,32 +340,13 @@ function exportCsv() {
   const link=document.createElement('a'); link.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));
   link.download=`PinkPocket-${period}.csv`; link.click(); URL.revokeObjectURL(link.href);
 }
-async function signOut() {
-  $('#accountPopover').hidden=true;
-  try { const {error}=await client.auth.signOut({scope:'local'}); if(error) throw error; }
-  catch(error) { showToast(friendlyError(error.message)); }
-}
-
 function init() {
   if (!isConfigured() || !window.supabase?.createClient) { showConfig(); return; }
   const cfg=window.PINKPOCKET_CONFIG;
   client=window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey,{
-    auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true}
+    auth:{autoRefreshToken:false,persistSession:false,detectSessionInUrl:false}
   });
-  updateAuthLabels();
-  $('#authForm').addEventListener('submit',handleAuth);
-  client.auth.getSession().then(({data,error})=>{
-    if (error) { showAuth(friendlyError(error.message)); return; }
-    if (data.session?.user) { currentUser=data.session.user; enterApp(); }
-    else showAuth();
-  }).catch(error=>showAuth(friendlyError(error.message)));
-  client.auth.onAuthStateChange((_event,session)=>{
-    if (session?.user && (!currentUser || currentUser.id!==session.user.id)) {
-      currentUser=session.user; enterApp();
-    } else if (!session?.user && currentUser) {
-      currentUser=null; transactions=[]; if(realtimeChannel){client.removeChannel(realtimeChannel);realtimeChannel=null;} showAuth();
-    }
-  });
+  enterApp();
   $('#periodButton').addEventListener('click',openMonthPicker);
   $('#prevMonth').addEventListener('click',()=>moveMonth(-1));
   $('#nextMonth').addEventListener('click',()=>moveMonth(1));
@@ -439,7 +359,6 @@ function init() {
   });
   document.addEventListener('click',event=>{
     if(!event.target.closest('.period-card')){$('#monthPopover').hidden=true;$('#periodButton').setAttribute('aria-expanded','false');}
-    if(!event.target.closest('.topbar')&&!event.target.closest('.account-popover'))$('#accountPopover').hidden=true;
   });
   $$('[data-view]').forEach(button=>button.addEventListener('click',()=>changeView(button.dataset.view)));
   $$('[data-open]').forEach(button=>button.addEventListener('click',()=>changeView(button.dataset.open)));
@@ -458,9 +377,7 @@ function init() {
   $('#dailyChart').addEventListener('click',event=>{const point=event.target.closest('[data-chart-day]');if(!point)return;selectedChartDay=point.dataset.chartDay;const rows=selectedRows();const dayRows=rows.filter(t=>t.date===selectedChartDay);const sums=sumRows(dayRows);renderChartDetail({date:selectedChartDay,income:sums.income,expense:sums.expense});});
   $('#dailyChart').addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){const point=event.target.closest('[data-chart-day]');if(point){event.preventDefault();selectedChartDay=point.dataset.chartDay;const sums=sumRows(selectedRows().filter(t=>t.date===selectedChartDay));renderChartDetail({date:selectedChartDay,...sums});}}});
   $('#exportCsv').addEventListener('click',exportCsv);
-  $('#accountButton').addEventListener('click',()=>{$('#accountPopover').hidden=!$('#accountPopover').hidden;});
-  $('#signOutButton').addEventListener('click',signOut);
-  window.addEventListener('focus',()=>{if(currentUser)fetchTransactions(true).catch(()=>{});});
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&currentUser)fetchTransactions(true).catch(()=>{});});
+  window.addEventListener('focus',()=>fetchTransactions(true).catch(()=>{}));
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)fetchTransactions(true).catch(()=>{});});
 }
 init();

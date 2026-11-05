@@ -6,27 +6,10 @@
   <meta name="theme-color" content="#e94f96">
   <meta name="description" content="Catatan keuangan bersama yang simpel, manis, dan tersinkronisasi.">
   <title>PinkPocket — Catatan Keuangan</title>
-  <link rel="stylesheet" href="assets/style.css?v=2">
+  <link rel="stylesheet" href="assets/style.css?v=3">
 </head>
 <body>
-  <section class="auth-screen" id="authScreen" aria-live="polite">
-    <div class="auth-card">
-      <div class="brand-mark">♡</div>
-      <div class="eyebrow">YOUR SHARED MONEY SPACE</div>
-      <h1>PinkPocket<span>✿</span></h1>
-      <p class="auth-lead" id="authSubtitle">Masuk ke ruang keuangan kalian.</p>
-      <form id="authForm" class="auth-form">
-        <label>Email bersama<input id="authEmail" type="email" autocomplete="email" placeholder="nama@email.com" required></label>
-        <label>Kata sandi<input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="Minimal 6 karakter" required></label>
-        <button class="button-pink auth-submit" id="authSubmit" type="submit">Masuk ke PinkPocket ♡</button>
-      </form>
-      <p class="auth-switch" id="authSwitch">Belum punya akun? <button type="button" id="toggleAuth">Buat akun bersama</button></p>
-      <p class="auth-message" id="authMessage" role="status"></p>
-      <div class="auth-footnote">Satu akun untuk dua perangkat. Gunakan email dan kata sandi yang sama di HP kalian berdua.</div>
-    </div>
-  </section>
-
-  <section class="config-screen" id="configScreen" hidden>
+<section class="config-screen" id="configScreen" hidden>
     <div class="config-card">
       <div class="brand-mark">♡</div>
       <h1>Hubungkan PinkPocket</h1>
@@ -41,14 +24,13 @@
     </div>
   </section>
 
-  <div class="app" id="appShell" hidden>
+  <div class="app" id="appShell">
     <header class="topbar">
       <div>
         <div class="overline">SHARED MONEY JOURNAL</div>
         <h1>BUBUBBBKU TERSAYANG <span class="sparkle">✿</span></h1>
         <p id="greeting">Satu catatan, dua orang, lebih teratur.</p>
       </div>
-      <button class="avatar" id="accountButton" title="Akun dan keluar">♡</button>
     </header>
 
     <section class="period-card" aria-label="Pilih periode">
@@ -145,15 +127,10 @@
       <button class="button-pink save-button" id="saveEntryButton" type="submit">Simpan transaksi ♡</button>
     </form>
   </div>
-
-  <div class="account-popover" id="accountPopover" hidden>
-    <div class="account-email" id="accountEmail"></div>
-    <button type="button" id="signOutButton">Keluar dari PinkPocket</button>
-  </div>
-  <div class="toast" id="toast" role="status"></div>
+<div class="toast" id="toast" role="status"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
-  <script src="assets/app.js?v=2"></script>
+  <script src="assets/app.js?v=3"></script>
 </body>
 </html>

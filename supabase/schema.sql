@@ -1,78 +1,58 @@
--- PinkPocket shared database
--- Run this script once in Supabase Dashboard > SQL Editor.
+-- PinkPocket: ubah tabel menjadi satu ruang data bersama TANPA login.
+-- Jalankan sekali di Supabase SQL Editor setelah mengganti versi aplikasi.
+-- PERINGATAN: policy anon di bawah membuka baca/tambah/edit/hapus kepada SIAPA PUN
+-- yang mengetahui Project URL dan publishable key. Jangan simpan data sensitif.
 
-create table if not exists public.transactions (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  type text not null check (type in ('income','expense','transfer')),
-  amount numeric(18,2) not null check (amount > 0),
-  description text not null check (length(trim(description)) between 1 and 100),
-  category text not null default '',
-  wallet text not null check (wallet in ('cash','bank','savings')),
-  to_wallet text null check (to_wallet is null or to_wallet in ('cash','bank','savings')),
-  date date not null check (date >= date '2026-11-01'),
-  note text not null default '',
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint valid_transfer_wallets check (
-    (type = 'transfer' and to_wallet is not null and wallet <> to_wallet)
-    or (type <> 'transfer' and to_wallet is null)
-  )
-);
+begin;
 
-create index if not exists transactions_user_date_idx
-  on public.transactions (user_id, date desc, created_at desc);
-
-alter table public.transactions enable row level security;
-alter table public.transactions replica identity full;
-
+-- Hapus policy autentikasi dari versi sebelumnya.
 drop policy if exists "Users can read their own transactions" on public.transactions;
 drop policy if exists "Users can insert their own transactions" on public.transactions;
 drop policy if exists "Users can update their own transactions" on public.transactions;
 drop policy if exists "Users can delete their own transactions" on public.transactions;
+drop policy if exists "Public can read shared transactions" on public.transactions;
+drop policy if exists "Public can insert shared transactions" on public.transactions;
+drop policy if exists "Public can update shared transactions" on public.transactions;
+drop policy if exists "Public can delete shared transactions" on public.transactions;
 
-create policy "Users can read their own transactions"
+-- Hapus kolom pemilik karena semua perangkat memakai ruang data yang sama.
+alter table public.transactions drop column if exists user_id cascade;
+
+-- RLS tetap aktif, tetapi akses anonim dibuka sesuai pilihan tanpa-login.
+alter table public.transactions enable row level security;
+
+create policy "Public can read shared transactions"
 on public.transactions for select
-to authenticated
-using ((select auth.uid()) = user_id);
+to anon, authenticated
+using (true);
 
-create policy "Users can insert their own transactions"
+create policy "Public can insert shared transactions"
 on public.transactions for insert
-to authenticated
-with check ((select auth.uid()) = user_id);
+to anon, authenticated
+with check (true);
 
-create policy "Users can update their own transactions"
+create policy "Public can update shared transactions"
 on public.transactions for update
-to authenticated
-using ((select auth.uid()) = user_id)
-with check ((select auth.uid()) = user_id);
+to anon, authenticated
+using (true)
+with check (true);
 
-create policy "Users can delete their own transactions"
+create policy "Public can delete shared transactions"
 on public.transactions for delete
-to authenticated
-using ((select auth.uid()) = user_id);
+to anon, authenticated
+using (true);
 
-create or replace function public.set_updated_at()
-returns trigger
-language plpgsql
-as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$;
+-- Karena opsi auto-expose dimatikan saat pembuatan project, beri hak CRUD secara eksplisit.
+grant usage on schema public to anon, authenticated;
+revoke all on table public.transactions from anon, authenticated;
+grant select, insert, update, delete on table public.transactions to anon, authenticated;
 
-drop trigger if exists set_transactions_updated_at on public.transactions;
-create trigger set_transactions_updated_at
-before update on public.transactions
-for each row execute function public.set_updated_at();
-
--- Add the table to Supabase Realtime only if it is not already published.
+-- Pastikan perubahan tetap memicu sinkronisasi realtime.
+alter table public.transactions replica identity full;
 do $$
 begin
   if not exists (
-    select 1
-    from pg_publication_tables
+    select 1 from pg_publication_tables
     where pubname = 'supabase_realtime'
       and schemaname = 'public'
       and tablename = 'transactions'
@@ -81,3 +61,5 @@ begin
   end if;
 end;
 $$;
+
+commit;
