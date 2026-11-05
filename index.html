@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#e94f96">
+  <meta name="description" content="Catatan keuangan bersama yang simpel, manis, dan tersinkronisasi.">
+  <title>PinkPocket — Catatan Keuangan</title>
+  <link rel="stylesheet" href="assets/style.css?v=2">
+</head>
+<body>
+  <section class="auth-screen" id="authScreen" aria-live="polite">
+    <div class="auth-card">
+      <div class="brand-mark">♡</div>
+      <div class="eyebrow">YOUR SHARED MONEY SPACE</div>
+      <h1>PinkPocket<span>✿</span></h1>
+      <p class="auth-lead" id="authSubtitle">Masuk ke ruang keuangan kalian.</p>
+      <form id="authForm" class="auth-form">
+        <label>Email bersama<input id="authEmail" type="email" autocomplete="email" placeholder="nama@email.com" required></label>
+        <label>Kata sandi<input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="Minimal 6 karakter" required></label>
+        <button class="button-pink auth-submit" id="authSubmit" type="submit">Masuk ke PinkPocket ♡</button>
+      </form>
+      <p class="auth-switch" id="authSwitch">Belum punya akun? <button type="button" id="toggleAuth">Buat akun bersama</button></p>
+      <p class="auth-message" id="authMessage" role="status"></p>
+      <div class="auth-footnote">Satu akun untuk dua perangkat. Gunakan email dan kata sandi yang sama di HP kalian berdua.</div>
+    </div>
+  </section>
+
+  <section class="config-screen" id="configScreen" hidden>
+    <div class="config-card">
+      <div class="brand-mark">♡</div>
+      <h1>Hubungkan PinkPocket</h1>
+      <p>Isi URL project dan publishable key Supabase di file <code>config.js</code> terlebih dahulu.</p>
+      <ol>
+        <li>Buka <code>config.example.js</code>.</li>
+        <li>Salin menjadi <code>config.js</code>.</li>
+        <li>Isi Project URL dan publishable key dari Supabase.</li>
+        <li>Upload kembali ke GitHub.</li>
+      </ol>
+      <p class="muted">Jangan pernah memasukkan <code>service_role</code> key ke aplikasi browser.</p>
+    </div>
+  </section>
+
+  <div class="app" id="appShell" hidden>
+    <header class="topbar">
+      <div>
+        <div class="overline">SHARED MONEY JOURNAL</div>
+        <h1>BUBUBBBKU TERSAYANG <span class="sparkle">✿</span></h1>
+        <p id="greeting">Satu catatan, dua orang, lebih teratur.</p>
+      </div>
+      <button class="avatar" id="accountButton" title="Akun dan keluar">♡</button>
+    </header>
+
+    <section class="period-card" aria-label="Pilih periode">
+      <button class="period-arrow" id="prevMonth" aria-label="Bulan sebelumnya">‹</button>
+      <button class="period-current" id="periodButton" aria-expanded="false">
+        <span class="period-caption">PERIODE AKTIF</span>
+        <strong id="periodLabel">November 2026</strong>
+        <span class="period-hint">ketuk untuk ganti bulan</span>
+      </button>
+      <button class="period-arrow" id="nextMonth" aria-label="Bulan berikutnya">›</button>
+      <div class="month-popover" id="monthPopover" hidden>
+        <div class="month-pop-head"><strong id="yearLabel">2026</strong><div><button id="prevYear" aria-label="Tahun sebelumnya">‹</button><button id="nextYear" aria-label="Tahun berikutnya">›</button></div></div>
+        <div class="month-grid" id="monthGrid"></div>
+      </div>
+    </section>
+
+    <div class="sync-strip" id="syncStatus"><span class="sync-dot"></span><span id="syncLabel">Menghubungkan...</span></div>
+
+    <main>
+      <section class="view active" id="view-home">
+        <div class="balance-card">
+          <div class="balance-top"><span>Total saldo</span><span class="balance-heart">♡</span></div>
+          <div class="balance-value" id="totalBalance">Rp0</div>
+          <div class="balance-foot"><span>Saldo gabungan tiga dompet</span><span id="balanceAsOf">per Nov 2026</span></div>
+          <div class="bubble bubble-one"></div><div class="bubble bubble-two"></div>
+        </div>
+        <div class="section-title"><h2>Dompet kalian</h2><span class="tiny-note">Saldo akhir periode</span></div>
+        <div class="wallet-cards" id="homeWallets"></div>
+        <div class="section-title"><h2>Ringkasan bulan ini</h2><span class="flower">✿</span></div>
+        <div class="summary-cards">
+          <article class="summary income"><div class="summary-icon">↙</div><span>Pemasukan</span><strong id="homeIncome">Rp0</strong></article>
+          <article class="summary expense"><div class="summary-icon">↗</div><span>Pengeluaran</span><strong id="homeExpense">Rp0</strong></article>
+        </div>
+        <div class="section-title"><h2>Aktivitas terbaru</h2><button class="link-button" data-open="transactions">Lihat semua</button></div>
+        <div class="white-panel" id="homeRecent"></div>
+      </section>
+
+      <section class="view" id="view-transactions">
+        <div class="page-title-row"><div><div class="overline">CATATAN UANG</div><h2>Transaksi</h2></div><button class="button-pink small" id="addTransactionTop">＋ Tambah</button></div>
+        <div class="filter-pills" id="typeFilters">
+          <button class="selected" data-filter="all">Semua</button><button data-filter="income">Masuk</button><button data-filter="expense">Keluar</button><button data-filter="transfer">Transfer</button>
+        </div>
+        <div class="white-panel" id="transactionList"></div>
+      </section>
+
+      <section class="view" id="view-wallets">
+        <div class="overline">TEMPAT UANG DISIMPAN</div><h2 class="page-heading">Dompet kalian</h2><p class="intro">Tiga tempat, satu catatan yang rapi.</p>
+        <div class="wallet-list" id="walletList"></div>
+        <div class="soft-note"><span>♡</span><p>Memindahkan uang antar-dompet tidak dihitung sebagai pemasukan atau pengeluaran. Saldo gabungan tetap sama.</p></div>
+        <div class="section-title"><h2>Aktivitas dompet</h2></div><div class="white-panel" id="walletActivity"></div>
+      </section>
+
+      <section class="view" id="view-report">
+        <div class="overline">LIHAT PERJALANAN UANG KALIAN</div><h2 class="page-heading">Rekap bulanan</h2><p class="intro" id="reportSubtitle">Semua transaksi di bulan terpilih.</p>
+        <div class="report-total">
+          <div><span>Total pemasukan</span><strong id="reportIncome">Rp0</strong></div>
+          <div><span>Total pengeluaran</span><strong id="reportExpense">Rp0</strong></div>
+          <div class="report-net"><span>Selisih bulan ini</span><strong id="reportNet">Rp0</strong><small id="reportNetHint">Pemasukan dikurangi pengeluaran</small></div>
+        </div>
+        <div class="white-panel chart-panel">
+          <div class="section-title"><h2>Arus kas harian</h2><span class="tiny-note">Perbandingan per hari</span></div>
+          <div class="chart-legend"><span><i class="dot green"></i> Pemasukan</span><span><i class="dot pink"></i> Pengeluaran</span></div>
+          <div class="chart-wrap" id="dailyChart"></div>
+          <div class="chart-detail" id="chartDetail"><span>Pilih titik pada grafik untuk melihat detail hari.</span></div>
+          <p class="chart-explain">Dua garis menunjukkan pemasukan dan pengeluaran tiap tanggal. Area di antaranya memperlihatkan besar selisih harian.</p>
+        </div>
+        <div class="section-title"><h2>Rincian per tanggal</h2><span class="tiny-note" id="dayCount">0 hari</span></div>
+        <div class="day-list" id="dailyDetails"></div>
+        <button class="button-outline export-button" id="exportCsv">Unduh rekap CSV ↓</button>
+      </section>
+    </main>
+
+    <nav class="bottom-nav">
+      <button class="nav-item active" data-view="home"><span>⌂</span><small>Beranda</small></button>
+      <button class="nav-item" data-view="transactions"><span>▤</span><small>Transaksi</small></button>
+      <button class="nav-add" id="addFab" aria-label="Tambah transaksi">＋</button>
+      <button class="nav-item" data-view="wallets"><span>♡</span><small>Dompet</small></button>
+      <button class="nav-item" data-view="report"><span>▥</span><small>Rekap</small></button>
+    </nav>
+  </div>
+
+  <div class="modal-scrim" id="modalScrim">
+    <form class="entry-sheet" id="entryForm">
+      <div class="sheet-grabber"></div>
+      <div class="sheet-heading"><div><div class="overline" id="entryEyebrow">TAMBAH CATATAN</div><h2 id="entryTitle">Transaksi baru</h2></div><button type="button" class="close-button" id="closeEntry">×</button></div>
+      <div class="entry-types"><button type="button" data-type="income" class="active">↙ Pemasukan</button><button type="button" data-type="expense">↗ Pengeluaran</button><button type="button" data-type="transfer">⇄ Transfer</button></div>
+      <label class="field-label">Nominal<div class="amount-wrap"><span>Rp</span><input id="amount" type="number" inputmode="numeric" min="1" step="1" placeholder="0" required></div></label>
+      <label class="field-label">Keterangan<input id="description" type="text" maxlength="100" placeholder="Uang dari mana / untuk apa?" required></label>
+      <label class="field-label" id="categoryField">Kategori <span class="optional">opsional</span><input id="category" type="text" maxlength="40" placeholder="Contoh: Gaji, makan, transportasi"></label>
+      <label class="field-label" id="walletField">Dompet<select id="wallet"><option value="cash">Cash</option><option value="bank">Rekening</option><option value="savings">Tabungan</option></select></label>
+      <label class="field-label hidden" id="toWalletField">Pindah ke<select id="toWallet"><option value="savings">Tabungan</option><option value="cash">Cash</option><option value="bank">Rekening</option></select></label>
+      <label class="field-label">Tanggal<input id="transactionDate" type="date" min="2026-11-01" value="2026-11-05" required></label>
+      <label class="field-label">Catatan tambahan <span class="optional">opsional</span><input id="note" type="text" maxlength="200" placeholder="Tambahkan detail kalau perlu"></label>
+      <button class="button-pink save-button" id="saveEntryButton" type="submit">Simpan transaksi ♡</button>
+    </form>
+  </div>
+
+  <div class="account-popover" id="accountPopover" hidden>
+    <div class="account-email" id="accountEmail"></div>
+    <button type="button" id="signOutButton">Keluar dari PinkPocket</button>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="assets/app.js?v=2"></script>
+</body>
+</html>
