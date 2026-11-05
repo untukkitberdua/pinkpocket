@@ -162,44 +162,51 @@ function emptyState(title='Belum ada transaksi',subtitle='Catat pemasukan atau p
 function renderChart(rows) {
   const [year,month] = period.split('-').map(Number);
   const lastDay = new Date(year,month,0).getDate();
+  let runningBalance = 0;
   const daily = Array.from({length:lastDay},(_,i) => {
     const date = `${period}-${String(i+1).padStart(2,'0')}`;
     const result = sumRows(rows.filter(t => t.date === date));
-    return { date, day:i+1, income:result.income, expense:result.expense };
+    const change = result.income - result.expense;
+    runningBalance += change;
+    return { date, day:i+1, income:result.income, expense:result.expense, change, balance:runningBalance };
   });
-  const maxValue = Math.max(1,...daily.flatMap(d => [d.income,d.expense]));
-  const chartMax = maxValue * 1.12;
+  const maxValue = Math.max(1,...daily.map(d => d.balance));
+  const minValue = Math.min(0,...daily.map(d => d.balance));
+  const range = Math.max(1,maxValue-minValue);
+  const chartMin = minValue < 0 ? minValue - range*.1 : 0;
+  const chartMax = maxValue > 0 ? maxValue + range*.12 : 1;
   const width = 760, height = 230, left = 66, right = 16, top = 15, bottom = 35;
   const plotWidth = width-left-right, plotHeight = height-top-bottom;
   const x = (index) => left + (daily.length <= 1 ? 0 : index*plotWidth/(daily.length-1));
-  const y = (value) => top + plotHeight - (value/chartMax)*plotHeight;
-  const incomePts = daily.map((d,i)=>`${x(i).toFixed(1)},${y(d.income).toFixed(1)}`);
-  const expensePts = daily.map((d,i)=>`${x(i).toFixed(1)},${y(d.expense).toFixed(1)}`);
-  const incomePath = incomePts.map((p,i)=>`${i?'L':'M'}${p}`).join(' ');
-  const expensePath = expensePts.map((p,i)=>`${i?'L':'M'}${p}`).join(' ');
-  const gapPath = `${incomePts.map((p,i)=>`${i?'L':'M'}${p}`).join(' ')} ${expensePts.slice().reverse().map(p=>`L${p}`).join(' ')} Z`;
+  const y = (value) => top + plotHeight - ((value-chartMin)/(chartMax-chartMin))*plotHeight;
+  const balancePts = daily.map((d,i)=>`${x(i).toFixed(1)},${y(d.balance).toFixed(1)}`);
+  const balancePath = balancePts.map((point,i)=>`${i?'L':'M'}${point}`).join(' ');
+  const zeroY = y(0);
+  const areaPath = `${balancePath} L${x(daily.length-1).toFixed(1)},${zeroY.toFixed(1)} L${x(0).toFixed(1)},${zeroY.toFixed(1)} Z`;
   const grid = [0,.5,1].map(ratio => {
-    const yy = top + plotHeight*(1-ratio);
-    return `<line class="chart-grid-line" x1="${left}" y1="${yy}" x2="${width-right}" y2="${yy}"/><text class="chart-axis-text" x="${left-9}" y="${yy+3}" text-anchor="end">${escapeHTML(compactMoney(chartMax*ratio))}</text>`;
+    const value = chartMin + (chartMax-chartMin)*ratio;
+    const yy = y(value);
+    return `<line class="chart-grid-line" x1="${left}" y1="${yy}" x2="${width-right}" y2="${yy}"/><text class="chart-axis-text" x="${left-9}" y="${yy+3}" text-anchor="end">${escapeHTML(compactMoney(value))}</text>`;
   }).join('');
+  const zeroLine = `<line class="chart-grid-line" x1="${left}" y1="${zeroY}" x2="${width-right}" y2="${zeroY}" stroke-dasharray="4 4"/>`;
   const labelDays = [...new Set([1,5,10,15,20,25,lastDay])];
   const labels = labelDays.map(day => `<text class="chart-axis-text" x="${x(day-1)}" y="${height-8}" text-anchor="middle">${day}</text>`).join('');
   const markers = daily.map((d,i) => `
-    <g class="chart-point income" data-chart-day="${d.date}" tabindex="0" role="button" aria-label="Pemasukan tanggal ${d.day}: ${money(d.income)}"><title>${d.day} ${MONTHS[month-1]} · Masuk ${money(d.income)}</title><circle cx="${x(i)}" cy="${y(d.income)}" r="3.5"/></g>
-    <g class="chart-point expense" data-chart-day="${d.date}" tabindex="0" role="button" aria-label="Pengeluaran tanggal ${d.day}: ${money(d.expense)}"><title>${d.day} ${MONTHS[month-1]} · Keluar ${money(d.expense)}</title><circle cx="${x(i)}" cy="${y(d.expense)}" r="3.5"/></g>`).join('');
-  $('#dailyChart').innerHTML = `<svg class="daily-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Grafik garis pemasukan dan pengeluaran harian bulan ${monthLabel(period)}">${grid}<path class="chart-gap" d="${gapPath}"/><path class="chart-income-line" d="${incomePath}"/><path class="chart-expense-line" d="${expensePath}"/>${markers}${labels}</svg>`;
+    <g class="chart-point balance" data-chart-day="${d.date}" tabindex="0" role="button" aria-label="Saldo berjalan tanggal ${d.day}: ${money(d.balance)}"><title>${d.day} ${MONTHS[month-1]} · Saldo berjalan ${money(d.balance)} · Perubahan ${d.change>=0?'+':'−'}${money(Math.abs(d.change))}</title><circle cx="${x(i)}" cy="${y(d.balance)}" r="3.5"/></g>`).join('');
+  $('#dailyChart').innerHTML = `<svg class="daily-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Grafik pergerakan saldo berjalan bulan ${monthLabel(period)}">${grid}${zeroLine}<path class="chart-gap" d="${areaPath}"/><path class="chart-income-line" d="${balancePath}"/>${markers}${labels}</svg>`;
   const nonZero = daily.filter(d => d.income || d.expense);
   if (!daily.some(d => d.date === selectedChartDay) || selectedChartDay.slice(0,7) !== period) selectedChartDay = (nonZero[0] || daily[0]).date;
   renderChartDetail(daily.find(d => d.date === selectedChartDay) || daily[0]);
 }
 function renderChartDetail(day) {
-  if (!day) { $('#chartDetail').innerHTML = 'Belum ada data arus kas.'; return; }
-  const net = day.income - day.expense;
-  const sign = net > 0 ? '+' : net < 0 ? '−' : '';
+  if (!day) { $('#chartDetail').innerHTML = 'Belum ada data pergerakan saldo.'; return; }
+  const change = day.change ?? (day.income - day.expense);
+  const sign = change > 0 ? '+' : change < 0 ? '−' : '';
   $('#chartDetail').innerHTML = `<strong>${escapeHTML(formatDate(day.date))}</strong><div class="chart-detail-grid">
-    <div><span>Pemasukan</span><b class="positive">${money(day.income)}</b></div>
-    <div><span>Pengeluaran</span><b class="negative">${money(day.expense)}</b></div>
-    <div><span>Selisih</span><b class="${net>0?'positive':net<0?'negative':'neutral'}">${sign}${money(Math.abs(net))}</b></div>
+    <div><span>Pemasukan hari ini</span><b class="positive">${money(day.income)}</b></div>
+    <div><span>Pengeluaran hari ini</span><b class="negative">${money(day.expense)}</b></div>
+    <div><span>Perubahan saldo</span><b class="${change>0?'positive':change<0?'negative':'neutral'}">${sign}${money(Math.abs(change))}</b></div>
+    <div><span>Saldo berjalan</span><b class="${day.balance>0?'positive':day.balance<0?'negative':'neutral'}">${money(day.balance ?? 0)}</b></div>
   </div>`;
 }
 function render() {
@@ -376,8 +383,9 @@ function init() {
   });
   ['#transactionList','#homeRecent','#walletActivity','#dailyDetails'].forEach(selector=>$(selector).addEventListener('click',handleTransactionAction));
   $('#dailyDetails').addEventListener('click',event=>{const button=event.target.closest('[data-day]');if(!button)return;openedDay=openedDay===button.dataset.day?'':button.dataset.day;render();});
-  $('#dailyChart').addEventListener('click',event=>{const point=event.target.closest('[data-chart-day]');if(!point)return;selectedChartDay=point.dataset.chartDay;const rows=selectedRows();const dayRows=rows.filter(t=>t.date===selectedChartDay);const sums=sumRows(dayRows);renderChartDetail({date:selectedChartDay,income:sums.income,expense:sums.expense});});
-  $('#dailyChart').addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){const point=event.target.closest('[data-chart-day]');if(point){event.preventDefault();selectedChartDay=point.dataset.chartDay;const sums=sumRows(selectedRows().filter(t=>t.date===selectedChartDay));renderChartDetail({date:selectedChartDay,...sums});}}});
+  const selectChartDay = (date) => { selectedChartDay=date; renderChart(selectedRows()); };
+  $('#dailyChart').addEventListener('click',event=>{const point=event.target.closest('[data-chart-day]');if(point)selectChartDay(point.dataset.chartDay);});
+  $('#dailyChart').addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){const point=event.target.closest('[data-chart-day]');if(point){event.preventDefault();selectChartDay(point.dataset.chartDay);}}});
   $('#exportCsv').addEventListener('click',exportCsv);
   window.addEventListener('focus',()=>fetchTransactions(true).catch(()=>{}));
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)fetchTransactions(true).catch(()=>{});});
