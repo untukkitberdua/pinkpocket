@@ -90,12 +90,20 @@
           <div><span>Total pengeluaran</span><strong id="reportExpense">Rp0</strong></div>
           <div class="report-net"><span>Selisih bulan ini</span><strong id="reportNet">Rp0</strong><small id="reportNetHint">Pemasukan dikurangi pengeluaran</small></div>
         </div>
-        <div class="white-panel chart-panel">
-          <div class="section-title"><h2>Arus kas harian</h2><span class="tiny-note">Perbandingan per hari</span></div>
-          <div class="chart-legend"><span><i class="dot green"></i> Pemasukan</span><span><i class="dot pink"></i> Pengeluaran</span></div>
-          <div class="chart-wrap" id="dailyChart"></div>
-          <div class="chart-detail" id="chartDetail"><span>Pilih titik pada grafik untuk melihat detail hari.</span></div>
-          <p class="chart-explain">Dua garis menunjukkan pemasukan dan pengeluaran tiap tanggal. Area di antaranya memperlihatkan besar selisih harian.</p>
+        <div class="section-title">
+  <h2>Pergerakan saldo</h2>
+  <span class="tiny-note">Saldo berjalan per hari</span>
+</div>
+<div class="chart-legend">
+  <span><i class="dot green"></i> Saldo berjalan</span>
+</div>
+<div class="chart-wrap" id="dailyChart"></div>
+<div class="chart-detail" id="chartDetail">
+  <span>Pilih titik pada grafik untuk melihat saldo hari tersebut.</span>
+</div>
+<p class="chart-explain">
+  Grafik menunjukkan perkembangan saldo gabungan setelah pemasukan dikurangi pengeluaran setiap hari.
+</p>
         </div>
         <div class="section-title"><h2>Rincian per tanggal</h2><span class="tiny-note" id="dayCount">0 hari</span></div>
         <div class="day-list" id="dailyDetails"></div>
