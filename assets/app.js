@@ -343,7 +343,9 @@ function exportCsv() {
 function init() {
   if (!isConfigured() || !window.supabase?.createClient) { showConfig(); return; }
   const cfg=window.PINKPOCKET_CONFIG;
-  client=window.supabase.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey,{
+  // Normalize the project URL so PostgREST's /rest/v1 is added exactly once.
+  const projectUrl=String(cfg.supabaseUrl || '').trim().replace(/\/+$/, '').replace(/(?:\/rest\/v1)+$/i, '');
+  client=window.supabase.createClient(projectUrl,cfg.supabaseAnonKey,{
     auth:{autoRefreshToken:false,persistSession:false,detectSessionInUrl:false}
   });
   enterApp();
