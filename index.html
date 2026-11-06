@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#e94f96">
+  <meta name="theme-color" content="#0d0b10">
   <meta name="description" content="Catatan keuangan bersama yang simpel, manis, dan tersinkronisasi.">
   <title>Management Keuangan Bubub</title>
-  <link rel="stylesheet" href="assets/style.css?v=3">
+  <link rel="stylesheet" href="assets/style.css?v=6">
 </head>
 <body>
 <section class="config-screen" id="configScreen" hidden>
@@ -76,11 +76,19 @@
         <div class="white-panel" id="transactionList"></div>
       </section>
 
-      <section class="view" id="view-wallets">
-        <div class="overline">TEMPAT UANG DISIMPAN</div><h2 class="page-heading">Dompet kalian</h2><p class="intro">Tiga tempat, satu catatan yang rapi.</p>
-        <div class="wallet-list" id="walletList"></div>
-        <div class="soft-note"><span>♡</span><p>Memindahkan uang antar-dompet tidak dihitung sebagai pemasukan atau pengeluaran. Saldo gabungan tetap sama.</p></div>
-        <div class="section-title"><h2>Aktivitas dompet</h2></div><div class="white-panel" id="walletActivity"></div>
+      <section class="view" id="view-calendar">
+        <div class="overline">JEJAK KEUANGAN KALIAN</div><h2 class="page-heading">Kalender</h2><p class="intro">Pilih tanggal untuk melihat semua catatan di hari itu.</p>
+        <div class="calendar-panel">
+          <div class="calendar-head"><div><span class="calendar-overline">KALENDER BULANAN</span><strong id="calendarMonthLabel">November 2026</strong></div><span class="calendar-total" id="calendarMonthCount">0 transaksi</span></div>
+          <div class="calendar-weekdays"><span>Min</span><span>Sen</span><span>Sel</span><span>Rab</span><span>Kam</span><span>Jum</span><span>Sab</span></div>
+          <div class="calendar-grid" id="calendarGrid"></div>
+          <div class="calendar-legend"><span><i></i> Ada transaksi</span><span class="legend-income">● Pemasukan</span><span class="legend-expense">● Pengeluaran</span></div>
+        </div>
+        <div class="calendar-selected" id="calendarSelected">
+          <div class="calendar-selected-heading"><div><span class="calendar-overline">RINCIAN HARIAN</span><strong id="calendarSelectedDate">Pilih tanggal</strong></div><span class="calendar-day-count" id="calendarSelectedCount">0 transaksi</span></div>
+          <div class="calendar-metrics" id="calendarMetrics"></div>
+          <div class="calendar-transactions" id="calendarDayTransactions"></div>
+        </div>
       </section>
 
       <section class="view" id="view-report">
@@ -90,23 +98,13 @@
           <div><span>Total pengeluaran</span><strong id="reportExpense">Rp0</strong></div>
           <div class="report-net"><span>Selisih bulan ini</span><strong id="reportNet">Rp0</strong><small id="reportNetHint">Pemasukan dikurangi pengeluaran</small></div>
         </div>
-        <div class="section-title">
-  <h2>Pergerakan saldo</h2>
-  <span class="tiny-note">Saldo berjalan per hari</span>
-</div>
-<div class="chart-legend">
-  <span><i class="dot green"></i> Saldo berjalan</span>
-</div>
-<div class="chart-wrap" id="dailyChart"></div>
-<div class="chart-detail" id="chartDetail">
-  <span>Pilih titik pada grafik untuk melihat saldo hari tersebut.</span>
-</div>
-<p class="chart-explain">
-  Grafik menunjukkan perkembangan saldo gabungan setelah pemasukan dikurangi pengeluaran setiap hari.
-</p>
+        <div class="white-panel chart-panel">
+          <div class="section-title"><h2>Pergerakan saldo</h2><span class="tiny-note">Saldo kumulatif harian</span></div>
+          <div class="chart-legend"><span><i class="dot pink"></i> Saldo berjalan</span><span class="chart-range-note">Skala otomatis mengikuti rentang saldo</span></div>
+          <div class="chart-wrap" id="dailyChart"></div>
+          <div class="chart-detail" id="chartDetail"><span>Pilih titik pada grafik untuk melihat detail hari.</span></div>
+          <p class="chart-explain">Grafik memakai saldo kumulatif sampai setiap tanggal. Sumbu vertikal menyesuaikan nilai terendah dan tertinggi agar perubahan kecil tetap terlihat.</p>
         </div>
-        <div class="section-title"><h2>Rincian per tanggal</h2><span class="tiny-note" id="dayCount">0 hari</span></div>
-        <div class="day-list" id="dailyDetails"></div>
         <button class="button-outline export-button" id="exportCsv">Unduh rekap CSV ↓</button>
       </section>
     </main>
@@ -115,7 +113,7 @@
       <button class="nav-item active" data-view="home"><span>⌂</span><small>Beranda</small></button>
       <button class="nav-item" data-view="transactions"><span>▤</span><small>Transaksi</small></button>
       <button class="nav-add" id="addFab" aria-label="Tambah transaksi">＋</button>
-      <button class="nav-item" data-view="wallets"><span>♡</span><small>Dompet</small></button>
+      <button class="nav-item" data-view="calendar"><span>▦</span><small>Kalender</small></button>
       <button class="nav-item" data-view="report"><span>▥</span><small>Rekap</small></button>
     </nav>
   </div>
@@ -139,6 +137,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js?v=4"></script>
-  <script src="assets/app.js?v=4"></script>
+  <script src="assets/app.js?v=6"></script>
 </body>
 </html>

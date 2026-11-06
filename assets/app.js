@@ -19,6 +19,7 @@ const compactMoney = (n) => {
 const escapeHTML = (value='') => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const monthLabel = (value) => { const [y,m] = value.split('-').map(Number); return `${MONTHS[m-1]} ${y}`; };
 const formatDate = (value) => new Date(`${value}T00:00:00`).toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+const formatShortDate = (value) => new Date(`${value}T00:00:00`).toLocaleDateString('id-ID',{day:'numeric',month:'short'});
 const todayLocal = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; };
 
 let client = null;
@@ -27,7 +28,7 @@ let period = '2026-11';
 let calendarYear = 2026;
 let activeType = 'expense';
 let activeFilter = 'all';
-let openedDay = '';
+let selectedCalendarDay = '';
 let editingId = null;
 let selectedChartDay = '';
 let realtimeChannel = null;
@@ -150,7 +151,7 @@ function transactionMarkup(t, showDate=true) {
   const detail = isTransfer ? `${WALLETS[t.wallet].name} → ${WALLETS[t.toWallet].name}` : (t.category || WALLETS[t.wallet].name);
   return `<article class="transaction-row">
     <div class="transaction-icon ${isIncome?'in':isExpense?'out':'move'}">${icon}</div>
-    <div class="transaction-main"><strong>${escapeHTML(t.description)}</strong><small>${escapeHTML(detail)}${showDate?' · '+formatDate(t.date):''}</small></div>
+    <div class="transaction-main"><strong>${escapeHTML(t.description)}</strong><small>${escapeHTML(detail)}${showDate?' · '+formatShortDate(t.date):''}</small></div>
     <div class="transaction-right"><b class="${amountClass}">${prefix} ${money(t.amount)}</b>
       <span class="row-actions"><button class="edit-one" data-edit="${escapeHTML(t.id)}" aria-label="Edit transaksi">✎</button><button data-delete="${escapeHTML(t.id)}" aria-label="Hapus transaksi">×</button></span>
     </div>
@@ -159,44 +160,69 @@ function transactionMarkup(t, showDate=true) {
 function emptyState(title='Belum ada transaksi',subtitle='Catat pemasukan atau pengeluaran pertamamu di sini.') {
   return `<div class="empty-state"><div class="empty-illustration">♡</div><strong>${title}</strong><p>${subtitle}</p></div>`;
 }
+function balanceDelta(t) {
+  if (t.type === 'income') return Number(t.amount);
+  if (t.type === 'expense') return -Number(t.amount);
+  return 0; // transfer hanya memindahkan lokasi uang, bukan mengubah saldo total
+}
+function balanceAtDate(date) {
+  return transactions.reduce((total, t) => t.date <= date ? total + balanceDelta(t) : total, 0);
+}
+function axisMoney(value, span) {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) {
+    const decimals = span < 100_000_000 ? 3 : span < 1_000_000_000 ? 2 : 1;
+    return `Rp${(value/1_000_000_000).toLocaleString('id-ID',{maximumFractionDigits:decimals})} M`;
+  }
+  if (abs >= 1_000_000) {
+    const decimals = span < 100_000 ? 3 : span < 1_000_000 ? 2 : 1;
+    return `Rp${(value/1_000_000).toLocaleString('id-ID',{maximumFractionDigits:decimals})} jt`;
+  }
+  if (abs >= 1_000) {
+    const decimals = span < 100 ? 2 : span < 1_000 ? 1 : 0;
+    return `Rp${(value/1_000).toLocaleString('id-ID',{maximumFractionDigits:decimals})} rb`;
+  }
+  return `Rp${Math.round(value).toLocaleString('id-ID')}`;
+}
 function renderChart(rows) {
   const [year,month] = period.split('-').map(Number);
   const lastDay = new Date(year,month,0).getDate();
-  let runningBalance = 0;
   const daily = Array.from({length:lastDay},(_,i) => {
     const date = `${period}-${String(i+1).padStart(2,'0')}`;
     const result = sumRows(rows.filter(t => t.date === date));
     const change = result.income - result.expense;
-    runningBalance += change;
-    return { date, day:i+1, income:result.income, expense:result.expense, change, balance:runningBalance };
+    return { date, day:i+1, income:result.income, expense:result.expense, change, balance:balanceAtDate(date) };
   });
-  const maxValue = Math.max(1,...daily.map(d => d.balance));
-  const minValue = Math.min(0,...daily.map(d => d.balance));
-  const range = Math.max(1,maxValue-minValue);
-  const chartMin = minValue < 0 ? minValue - range*.1 : 0;
-  const chartMax = maxValue > 0 ? maxValue + range*.12 : 1;
-  const width = 760, height = 230, left = 66, right = 16, top = 15, bottom = 35;
+  const values = daily.map(d => d.balance);
+  const dataMin = Math.min(...values), dataMax = Math.max(...values);
+  const dataRange = dataMax - dataMin;
+  // Do not force the Y axis to zero. Zoom in around the actual balance range.
+  const padding = dataRange > 0 ? dataRange * .14 : Math.max(Math.abs(dataMax) * .012, 100_000);
+  let chartMin = dataMin - padding;
+  let chartMax = dataMax + padding;
+  if (chartMax - chartMin < 1) { chartMin -= .5; chartMax += .5; }
+
+  const width = 760, height = 230, left = 78, right = 16, top = 15, bottom = 35;
   const plotWidth = width-left-right, plotHeight = height-top-bottom;
   const x = (index) => left + (daily.length <= 1 ? 0 : index*plotWidth/(daily.length-1));
   const y = (value) => top + plotHeight - ((value-chartMin)/(chartMax-chartMin))*plotHeight;
   const balancePts = daily.map((d,i)=>`${x(i).toFixed(1)},${y(d.balance).toFixed(1)}`);
   const balancePath = balancePts.map((point,i)=>`${i?'L':'M'}${point}`).join(' ');
-  const zeroY = y(0);
-  const areaPath = `${balancePath} L${x(daily.length-1).toFixed(1)},${zeroY.toFixed(1)} L${x(0).toFixed(1)},${zeroY.toFixed(1)} Z`;
-  const grid = [0,.5,1].map(ratio => {
+  const baselineY = top + plotHeight;
+  const areaPath = `${balancePath} L${x(daily.length-1).toFixed(1)},${baselineY} L${x(0).toFixed(1)},${baselineY} Z`;
+  const ticks = [0,1/3,2/3,1].map(ratio => {
     const value = chartMin + (chartMax-chartMin)*ratio;
     const yy = y(value);
-    return `<line class="chart-grid-line" x1="${left}" y1="${yy}" x2="${width-right}" y2="${yy}"/><text class="chart-axis-text" x="${left-9}" y="${yy+3}" text-anchor="end">${escapeHTML(compactMoney(value))}</text>`;
+    return `<line class="chart-grid-line" x1="${left}" y1="${yy}" x2="${width-right}" y2="${yy}"/><text class="chart-axis-text" x="${left-10}" y="${yy+3}" text-anchor="end">${escapeHTML(axisMoney(value,chartMax-chartMin))}</text>`;
   }).join('');
-  const zeroLine = `<line class="chart-grid-line" x1="${left}" y1="${zeroY}" x2="${width-right}" y2="${zeroY}" stroke-dasharray="4 4"/>`;
   const labelDays = [...new Set([1,5,10,15,20,25,lastDay])];
   const labels = labelDays.map(day => `<text class="chart-axis-text" x="${x(day-1)}" y="${height-8}" text-anchor="middle">${day}</text>`).join('');
   const markers = daily.map((d,i) => `
-    <g class="chart-point balance" data-chart-day="${d.date}" tabindex="0" role="button" aria-label="Saldo berjalan tanggal ${d.day}: ${money(d.balance)}"><title>${d.day} ${MONTHS[month-1]} · Saldo berjalan ${money(d.balance)} · Perubahan ${d.change>=0?'+':'−'}${money(Math.abs(d.change))}</title><circle cx="${x(i)}" cy="${y(d.balance)}" r="3.5"/></g>`).join('');
-  $('#dailyChart').innerHTML = `<svg class="daily-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Grafik pergerakan saldo berjalan bulan ${monthLabel(period)}">${grid}${zeroLine}<path class="chart-gap" d="${areaPath}"/><path class="chart-income-line" d="${balancePath}"/>${markers}${labels}</svg>`;
+    <g class="chart-point balance" data-chart-day="${d.date}" tabindex="0" role="button" aria-label="Saldo tanggal ${d.day}: ${money(d.balance)}"><title>${d.day} ${MONTHS[month-1]} · Saldo ${money(d.balance)} · Perubahan ${d.change>=0?'+':'−'}${money(Math.abs(d.change))}</title><circle cx="${x(i)}" cy="${y(d.balance)}" r="3.5"/></g>`).join('');
+  $('#dailyChart').innerHTML = `<svg class="daily-line-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Grafik pergerakan saldo harian bulan ${monthLabel(period)}"><defs><linearGradient id="pinkPocketChartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f078ad" stop-opacity=".26"/><stop offset="100%" stop-color="#f078ad" stop-opacity="0"/></linearGradient></defs>${ticks}<path class="chart-area" d="${areaPath}"/><path class="chart-income-line" d="${balancePath}"/>${markers}${labels}</svg>`;
   const nonZero = daily.filter(d => d.income || d.expense);
-  if (!daily.some(d => d.date === selectedChartDay) || selectedChartDay.slice(0,7) !== period) selectedChartDay = (nonZero[0] || daily[0]).date;
-  renderChartDetail(daily.find(d => d.date === selectedChartDay) || daily[0]);
+  if (!daily.some(d => d.date === selectedChartDay) || selectedChartDay.slice(0,7) !== period) selectedChartDay = (nonZero[0] || daily[daily.length-1]).date;
+  renderChartDetail(daily.find(d => d.date === selectedChartDay) || daily[daily.length-1]);
 }
 function renderChartDetail(day) {
   if (!day) { $('#chartDetail').innerHTML = 'Belum ada data pergerakan saldo.'; return; }
@@ -209,6 +235,42 @@ function renderChartDetail(day) {
     <div><span>Saldo berjalan</span><b class="${day.balance>0?'positive':day.balance<0?'negative':'neutral'}">${money(day.balance ?? 0)}</b></div>
   </div>`;
 }
+function renderCalendar(rows) {
+  const [year,month] = period.split('-').map(Number);
+  const lastDay = new Date(year,month,0).getDate();
+  const firstWeekday = new Date(year,month-1,1).getDay();
+  const byDate = {};
+  rows.forEach(t => (byDate[t.date] ||= []).push(t));
+  const dates = Object.keys(byDate);
+  const today = todayLocal();
+  if (!selectedCalendarDay || selectedCalendarDay.slice(0,7) !== period) {
+    selectedCalendarDay = today.startsWith(period) ? today : (dates.sort().at(-1) || `${period}-01`);
+  }
+  $('#calendarMonthLabel').textContent = monthLabel(period);
+  $('#calendarMonthCount').textContent = `${rows.length} transaksi`;
+  const cells = Array(firstWeekday).fill('<span class="calendar-empty" aria-hidden="true"></span>');
+  for (let day=1; day<=lastDay; day++) {
+    const date = `${period}-${String(day).padStart(2,'0')}`;
+    const dayRows = byDate[date] || [];
+    const sums = sumRows(dayRows);
+    const classes = ['calendar-day'];
+    if (date === selectedCalendarDay) classes.push('selected');
+    if (date === today) classes.push('today');
+    if (dayRows.length) classes.push('has-transactions');
+    if (sums.income && !sums.expense) classes.push('has-income');
+    if (sums.expense && !sums.income) classes.push('has-expense');
+    cells.push(`<button type="button" class="${classes.join(' ')}" data-calendar-day="${date}" aria-label="${escapeHTML(formatDate(date))}, ${dayRows.length} transaksi" aria-pressed="${date===selectedCalendarDay}"><span>${day}</span>${dayRows.length?'<i></i>':'<em></em>'}</button>`);
+  }
+  $('#calendarGrid').innerHTML = cells.join('');
+  const pickedRows = (byDate[selectedCalendarDay] || []).slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''));
+  const sums = sumRows(pickedRows);
+  const change = sums.income-sums.expense;
+  $('#calendarSelectedDate').textContent = formatDate(selectedCalendarDay);
+  $('#calendarSelectedCount').textContent = `${pickedRows.length} transaksi`;
+  $('#calendarMetrics').innerHTML = `<div><span>Masuk</span><strong class="positive">${money(sums.income)}</strong></div><div><span>Keluar</span><strong class="negative">${money(sums.expense)}</strong></div><div><span>Perubahan</span><strong class="${change>0?'positive':change<0?'negative':'neutral'}">${change>0?'+':change<0?'−':''}${money(Math.abs(change))}</strong></div>`;
+  $('#calendarDayTransactions').innerHTML = pickedRows.map(t=>transactionMarkup(t,false)).join('') || emptyState('Belum ada catatan','Tanggal ini masih kosong. Tekan tombol + untuk menambahkan transaksi.');
+}
+
 function render() {
   renderPeriod();
   const rows = selectedRows().sort((a,b)=>b.date.localeCompare(a.date)||(b.createdAt||'').localeCompare(a.createdAt||''));
@@ -226,19 +288,10 @@ function render() {
   $('#reportNetHint').textContent = net>0?'Pemasukan lebih besar dari pengeluaran':net<0?'Pengeluaran lebih besar dari pemasukan':'Pemasukan dan pengeluaran seimbang';
   $('#reportSubtitle').textContent = `Rangkuman ${monthLabel(period)} · ${rows.length} transaksi`;
   $('#homeWallets').innerHTML = Object.entries(WALLETS).map(([key,w])=>`<article class="mini-wallet ${w.color}"><div class="mini-wallet-icon">${w.icon}</div><span>${w.name}</span><strong>${money(balances[key])}</strong></article>`).join('');
-  $('#walletList').innerHTML = Object.entries(WALLETS).map(([key,w])=>`<article class="wallet-large ${w.color}"><div class="wallet-large-top"><span class="wallet-large-icon">${w.icon}</span><span class="wallet-period">SALDO AKHIR PERIODE</span></div><div class="wallet-large-name">${w.name}</div><strong>${money(balances[key])}</strong></article>`).join('');
-  $('#homeRecent').innerHTML = rows.slice(0,4).map(t=>transactionMarkup(t)).join('') || emptyState('Dompet masih kosong ♡','Belum ada catatan untuk periode ini. Tekan tombol + untuk mulai.');
+  $('#homeRecent').innerHTML = rows.slice(0,4).map(t=>transactionMarkup(t)).join('') || emptyState('Belum ada aktivitas ♡','Belum ada catatan untuk periode ini. Tekan tombol + untuk mulai.');
   const filtered = rows.filter(t=>activeFilter==='all'||t.type===activeFilter);
   $('#transactionList').innerHTML = filtered.map(t=>transactionMarkup(t)).join('') || emptyState('Belum ada transaksi','Semua masih Rp0. Tambahkan catatan pertamamu dengan tombol +.');
-  $('#walletActivity').innerHTML = rows.map(t=>transactionMarkup(t)).join('') || emptyState('Belum ada aktivitas dompet','Riwayat akan muncul setelah kalian mencatat transaksi.');
-  const byDate = {};
-  rows.forEach(t=>(byDate[t.date] ||= []).push(t));
-  const days = Object.keys(byDate).sort().reverse();
-  $('#dayCount').textContent = `${days.length} hari`;
-  $('#dailyDetails').innerHTML = days.map(date=>{
-    const dayRows=byDate[date], daySum=sumRows(dayRows), expanded=openedDay===date;
-    return `<article class="day-card"><button class="day-toggle" data-day="${date}"><span><strong>${formatDate(date)}</strong><small>Masuk ${money(daySum.income)} <i>·</i> Keluar ${money(daySum.expense)}</small></span><b>${expanded?'−':'+'}</b></button>${expanded?`<div class="day-transactions">${dayRows.map(t=>transactionMarkup(t,false)).join('')}</div>`:''}</article>`;
-  }).join('') || emptyState('Rekap masih kosong','Setelah ada transaksi, rincian harian akan muncul otomatis.');
+  renderCalendar(rows);
   renderChart(rows);
 }
 function changeView(name) {
@@ -251,7 +304,7 @@ function moveMonth(delta) {
   const d = new Date(y,m-1+delta,1);
   const next = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
   if (next < MIN_MONTH) return;
-  period = next; calendarYear = d.getFullYear(); openedDay=''; selectedChartDay='';
+  period = next; calendarYear = d.getFullYear(); selectedCalendarDay=''; selectedChartDay='';
   $('#monthPopover').hidden=true; $('#periodButton').setAttribute('aria-expanded','false'); render();
 }
 function openMonthPicker() {
@@ -317,6 +370,7 @@ async function saveEntry(event) {
     if (result.error) throw result.error;
     const savedDate = payload.date;
     if (savedDate.slice(0,7)!==period) { period=savedDate.slice(0,7); calendarYear=Number(period.slice(0,4)); }
+    selectedCalendarDay = savedDate;
     await fetchTransactions(true);
     closeEntry(); showToast(editingId?'Perubahan berhasil disimpan ♡':'Catatan berhasil disimpan ♡');
   } catch(error) {
@@ -363,7 +417,7 @@ function init() {
   $('#nextYear').addEventListener('click',()=>{calendarYear++;renderPeriod();});
   $('#monthGrid').addEventListener('click',event=>{
     const button=event.target.closest('[data-month]'); if(!button||button.disabled)return;
-    period=button.dataset.month; calendarYear=Number(period.slice(0,4)); openedDay=''; selectedChartDay='';
+    period=button.dataset.month; calendarYear=Number(period.slice(0,4)); selectedCalendarDay=''; selectedChartDay='';
     $('#monthPopover').hidden=true; $('#periodButton').setAttribute('aria-expanded','false'); render();
   });
   document.addEventListener('click',event=>{
@@ -381,8 +435,13 @@ function init() {
     const button=event.target.closest('[data-filter]'); if(!button)return;
     activeFilter=button.dataset.filter; $$('#typeFilters button').forEach(item=>item.classList.toggle('selected',item===button)); render();
   });
-  ['#transactionList','#homeRecent','#walletActivity','#dailyDetails'].forEach(selector=>$(selector).addEventListener('click',handleTransactionAction));
-  $('#dailyDetails').addEventListener('click',event=>{const button=event.target.closest('[data-day]');if(!button)return;openedDay=openedDay===button.dataset.day?'':button.dataset.day;render();});
+  ['#transactionList','#homeRecent','#calendarDayTransactions'].forEach(selector=>$(selector).addEventListener('click',handleTransactionAction));
+  $('#calendarGrid').addEventListener('click',event=>{
+    const button=event.target.closest('[data-calendar-day]');
+    if(!button)return;
+    selectedCalendarDay=button.dataset.calendarDay;
+    renderCalendar(selectedRows());
+  });
   const selectChartDay = (date) => { selectedChartDay=date; renderChart(selectedRows()); };
   $('#dailyChart').addEventListener('click',event=>{const point=event.target.closest('[data-chart-day]');if(point)selectChartDay(point.dataset.chartDay);});
   $('#dailyChart').addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){const point=event.target.closest('[data-chart-day]');if(point){event.preventDefault();selectChartDay(point.dataset.chartDay);}}});
